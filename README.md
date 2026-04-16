@@ -2,6 +2,31 @@
 
 A distributed AI agent runner. You give it a goal in natural language; an AI decomposes it into a DAG of subtasks; a Go backend executes the DAG across a worker pool with retries, timeouts, and live progress streaming to a React frontend.
 
+## Quick start
+
+```bash
+# One-time setup — install deps across all subprojects
+make setup
+
+# Generate protobuf code (run whenever .proto files change)
+make proto
+
+# Bring up cockroach, backend, ai service
+make up
+
+# Frontend runs outside compose for hot reload
+cd frontend && bun dev
+```
+
+Then open http://localhost:3000.
+
+### Common commands
+
+| Command | What it does |
+|---|---|
+| `make setup` | Install deps across all subprojects |
+...
+
 ## Why this exists
 
 This is a learning project designed to deeply exercise Go's concurrency model while also getting hands-on with CockroachDB, protobuf/gRPC, ai-sdk (TypeScript), TanStack Start, and shadcn.
