@@ -1,0 +1,10 @@
+# Declares a buf v2 module, enables standard linting rules (catches bad proto style), and sets breaking-change detection to file-level.  
+version: v2
+modules:
+  - path: .
+lint:
+  use:
+    - STANDARD
+breaking:
+  use:
+    - FILE
