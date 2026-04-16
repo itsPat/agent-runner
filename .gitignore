@@ -1,0 +1,24 @@
+# Deps
+node_modules/
+**/node_modules/
+
+# Build output
+**/dist/
+**/build/
+backend/bin/
+
+# Env
+.env
+.env.local
+**/.env.local
+
+# IDE
+.DS_Store
+.vscode/
+.idea/
+
+# Bun
+.bun/
+
+# NOTE: gen/ is committed for now — makes fresh clones "just work"
+# without needing buf installed. Revisit if diffs get noisy.

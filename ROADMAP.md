@@ -19,37 +19,46 @@ agent-runner/
 │   ├── buf.gen.yaml
 │   └── agent/v1/
 │       └── service.proto     # placeholder: Ping RPC only
-├── gen/                      # generated code (gitignored or committed — pick one)
+├── gen/                      # generated code (committed for now)
 │   ├── go/
 │   └── ts/
-├── orchestrator/             # Go service
-│   ├── cmd/orchestrator/
+├── backend/                  # Go core (hexagonal)
+│   ├── cmd/server/
 │   ├── internal/
+│   │   ├── domain/
+│   │   ├── app/
+│   │   ├── ports/
+│   │   └── adapters/
+│   │       ├── grpcai/
+│   │       ├── cockroach/
+│   │       ├── httpapi/
+│   │       └── memeventbus/
 │   ├── go.mod
 │   └── Dockerfile
-├── ai-service/               # TS service
-│   ├── src/
-│   ├── package.json
-│   └── Dockerfile
+├── services/                 # non-Go satellite services
+│   └── ai/                   # TS + ai-sdk (bun)
+│       ├── src/
+│       ├── package.json
+│       └── Dockerfile
 ├── frontend/                 # TanStack Start + shadcn
 │   ├── src/
 │   └── package.json
-├── docker-compose.yml        # cockroach + orchestrator + ai-service
+├── docker-compose.yml        # cockroach + backend + ai service
 ├── Makefile                  # common commands
 └── README.md
 ```
 
 ### Milestones
 
-- **0.1** Init monorepo, `.gitignore`, README skeleton, Makefile with `make up`, `make down`, `make proto`.
+- **0.1** Init monorepo, `.gitignore`, README, Makefile with `make up`, `make down`, `make proto`.
 - **0.2** `proto/` directory with `buf.yaml`, `buf.gen.yaml`, and a placeholder `service.proto` with a single `Ping` RPC. `make proto` generates Go + TS code.
-- **0.3** `orchestrator/` Go module with minimal HTTP server on `:8080` exposing `GET /health`.
-- **0.4** `ai-service/` TS project with minimal Express (or Hono) server on `:8081` exposing `GET /health` and a gRPC server implementing `Ping`.
-- **0.5** `frontend/` TanStack Start app with shadcn installed, one page that hits the orchestrator's `/health`.
-- **0.6** Docker Compose with Cockroach (single node), orchestrator, ai-service. Frontend runs locally for dev speed.
-- **0.7** Orchestrator calls `Ping` on ai-service over gRPC successfully at startup, logs the response.
+- **0.3** `backend/` Go module with hexagonal skeleton. `cmd/server/main.go` runs a minimal HTTP server on `:8080` exposing `GET /health`. Empty `internal/` packages created.
+- **0.4** `services/ai/` TS project (bun) with minimal gRPC server on `:8081` implementing `Ping`.
+- **0.5** `frontend/` TanStack Start app with shadcn installed, one page that hits the backend's `/health`.
+- **0.6** Docker Compose with Cockroach (single node), backend, ai service. Frontend runs locally for dev speed.
+- **0.7** Backend calls `Ping` on the AI service over gRPC successfully at startup, logs the response.
 
-**Done when:** `docker compose up` → frontend loads → frontend shows "orchestrator healthy" → orchestrator logs show successful gRPC ping to ai-service → Cockroach is reachable.
+**Done when:** `docker compose up` → frontend loads → frontend shows "backend healthy" → backend logs show successful gRPC ping to AI service → Cockroach is reachable.
 
 ---
 
@@ -60,19 +69,29 @@ agent-runner/
 ### What exists after this phase
 
 - User submits a goal from the frontend.
-- Orchestrator creates a run in Cockroach with a **hardcoded** 2-task DAG (e.g. task A → task B).
+- Backend creates a run in Cockroach with a **hardcoded** 2-task DAG (e.g. task A → task B).
 - "Tasks" are stub sleeps (`time.Sleep(2*time.Second)` then mark complete).
 - Frontend subscribes to SSE and sees tasks transition `pending` → `running` → `completed` live.
 - Run completes, frontend shows "done."
 
+### Hexagonal touch points
+
+- `domain/` gets `Run`, `Task`, `DAG` types.
+- `ports/` gets `TaskStore` and `EventBus` interfaces.
+- `adapters/cockroach/` implements `TaskStore`.
+- `adapters/memeventbus/` implements `EventBus` with an in-memory pub/sub for SSE fan-out.
+- `adapters/httpapi/` holds HTTP handlers + SSE streaming.
+- `app/` contains the stub "execute DAG" use case.
+- `cmd/server/main.go` wires it all together.
+
 ### Milestones
 
 - **1.1** Cockroach schema: `runs`, `tasks`, `events` tables. Migration tooling (golang-migrate or goose).
-- **1.2** Go data layer (`pgx` + small repository package). No ORM.
-- **1.3** Orchestrator HTTP API: `POST /runs` (create run with hardcoded DAG), `GET /runs/:id`, `GET /runs/:id/events` (SSE).
-- **1.4** Stub task executor in Go: goroutine that sleeps, writes a completion event.
-- **1.5** Event fan-out: when a task completes, write to `events` table AND push to any subscribed SSE clients via an in-memory pub/sub.
-- **1.6** Frontend: form to submit goal → redirect to run page → live-updating DAG visualization (simple node list is fine for v1, no fancy graph rendering yet).
+- **1.2** `adapters/cockroach/`: repository implementations using `pgx`. No ORM.
+- **1.3** `adapters/httpapi/`: `POST /runs` (create run with hardcoded DAG), `GET /runs/:id`, `GET /runs/:id/events` (SSE).
+- **1.4** `app/`: stub task executor — goroutine that sleeps, writes a completion event through the `EventBus` port.
+- **1.5** `adapters/memeventbus/`: when a task completes, event goes to `events` table AND to subscribed SSE clients via an in-memory pub/sub.
+- **1.6** Frontend: form to submit goal → redirect to run page → live-updating DAG view (simple node list is fine for v1, no fancy graph rendering yet).
 
 **Done when:** you click a button, watch two fake tasks complete in sequence in real time on the frontend, and the final run state is persisted in Cockroach.
 
@@ -85,10 +104,11 @@ agent-runner/
 ### Milestones
 
 - **2.1** Define `PlanGoal` RPC in protobuf. Regenerate code.
-- **2.2** Implement `PlanGoal` in the ai-service using ai-sdk with structured output (Zod schema for the DAG).
-- **2.3** Orchestrator calls `PlanGoal` on run creation, persists returned DAG to Cockroach instead of hardcoded one.
-- **2.4** Planner prompt engineering: enforce ≤20 tasks, valid task kinds, no cycles.
-- **2.5** Basic cycle detection in Go before persisting (defensive — don't trust the LLM).
+- **2.2** Implement `PlanGoal` in `services/ai/` using ai-sdk with structured output (Zod schema for the DAG).
+- **2.3** `ports/aiplanner.go` defines the `AIPlanner` interface. `adapters/grpcai/` implements it by calling the AI service.
+- **2.4** `app/` uses the `AIPlanner` port to plan the DAG on run creation and persists the result.
+- **2.5** Planner prompt engineering: enforce ≤20 tasks, valid task kinds, no cycles.
+- **2.6** Cycle detection in `domain/` before persisting (defensive — don't trust the LLM).
 
 **Done when:** you type "research the top 3 EV companies and summarize," and the frontend shows a real, LLM-generated DAG of stub tasks executing.
 
@@ -100,12 +120,12 @@ agent-runner/
 
 ### Milestones
 
-- **3.1** Worker pool in Go: N goroutines pulling tasks from a buffered channel. Configurable N via env var.
-- **3.2** Task dispatcher: separate goroutine that polls Cockroach for `ready` tasks (dependencies satisfied) and pushes to the worker channel. Use `SELECT ... FOR UPDATE SKIP LOCKED` to claim tasks atomically.
+- **3.1** Worker pool in `app/`: N goroutines pulling tasks from a buffered channel. Configurable N via env var.
+- **3.2** Task dispatcher: separate goroutine that polls the `TaskStore` for `ready` tasks (dependencies satisfied) and pushes to the worker channel. Use `SELECT ... FOR UPDATE SKIP LOCKED` to claim tasks atomically.
 - **3.3** Implement `fetch` task kind: Go makes HTTP GET, stores response body.
 - **3.4** Implement `transform` task kind: pure Go operation (concat, filter, format). Task spec defines the operation.
-- **3.5** Define `ExecuteTask` RPC (streaming). Implement in ai-service.
-- **3.6** Implement `ai` task kind: orchestrator calls `ExecuteTask`, forwards streamed tokens as events.
+- **3.5** Define `ExecuteTask` RPC (streaming). Implement in `services/ai/`.
+- **3.6** Implement `ai` task kind: calls `AIPlanner` port's `ExecuteTask`, forwards streamed tokens as events.
 - **3.7** Task result plumbing: upstream task results are passed into dependent tasks as context.
 - **3.8** Final `Summarize` RPC that assembles the DAG's leaf results into a user-facing answer.
 
@@ -121,7 +141,7 @@ agent-runner/
 
 - **4.1** Per-task `context.WithTimeout`. Timed-out tasks move to `failed`.
 - **4.2** Retry loop with jittered exponential backoff. Configurable max attempts per task kind.
-- **4.3** Context propagation: `POST /runs/:id/cancel` cancels the run's root context → flows through orchestrator → worker → in-flight gRPC → AI service aborts streaming.
+- **4.3** Context propagation: `POST /runs/:id/cancel` cancels the run's root context → flows through app → worker → in-flight gRPC → AI service aborts streaming.
 - **4.4** Run failure semantics: if a task fails after exhausted retries, mark remaining tasks `cancelled` and run `failed`. Clean shutdown of in-flight work.
 - **4.5** Graceful shutdown on SIGTERM: stop accepting new runs → wait for in-flight tasks up to a deadline → close gRPC clients → close DB pool.
 - **4.6** Structured logging throughout (slog) with run_id + task_id correlation.
@@ -151,8 +171,8 @@ agent-runner/
 
 Tackle any of these only after Phase 5. In rough order of interestingness:
 
-- **S.1 Crashed run recovery.** Heartbeats on `running` tasks (updated every N seconds by the worker). On orchestrator startup, reconcile: tasks with stale heartbeats → mark `failed` with reason `orchestrator_restart` or re-queue. This is a fun distributed-systems problem and genuinely uses Cockroach's transactional story.
-- **S.2 Replanning on failure.** New RPC `Replan(failed_task, context)` — AI proposes a revised subtree. Orchestrator splices it in.
+- **S.1 Crashed run recovery.** Heartbeats on `running` tasks (updated every N seconds by the worker). On backend startup, reconcile: tasks with stale heartbeats → mark `failed` with reason `backend_restart` or re-queue. Fun distributed-systems problem and genuinely uses Cockroach's transactional story.
+- **S.2 Replanning on failure.** New RPC `Replan(failed_task, context)` — AI proposes a revised subtree. Backend splices it in.
 - **S.3 Cost/token tracking.** Each AI response includes token counts; aggregate per run.
 - **S.4 Multiple concurrent runs.** Fair scheduling across the worker pool (weighted round-robin? just FIFO?). Worker pool stops being per-run.
 
