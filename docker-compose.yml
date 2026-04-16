@@ -1,0 +1,41 @@
+# Local dev orchestration. Frontend runs outside compose for hot reload.
+services:
+  cockroach:
+    image: cockroachdb/cockroach:v24.2.0
+    # Single-node insecure mode for local dev. DO NOT copy to prod.
+    # store=type=mem keeps data in RAM — fine for dev, wipes on restart.
+    command: start-single-node --insecure --store=type=mem,size=0.5
+    ports:
+      - "26257:26257"  # SQL
+      - "8090:8080"    # Cockroach admin UI (remapped to 8090 to avoid conflict with backend)
+    healthcheck:
+      test: ["CMD", "cockroach", "sql", "--insecure", "-e", "SELECT 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  ai-service:
+    build:
+      # Context is repo root so Docker can see services/ai AND gen/ts.
+      context: .
+      dockerfile: services/ai/Dockerfile
+    environment:
+      GRPC_PORT: "8081"
+    ports:
+      - "8081:8081"
+
+  backend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    environment:
+      HTTP_ADDR: ":8080"
+      AI_SERVICE_ADDR: "ai-service:8081"
+      COCKROACH_DSN: "postgres://root@cockroach:26257/defaultdb?sslmode=disable"
+    ports:
+      - "8080:8080"
+    depends_on:
+      cockroach:
+        condition: service_healthy
+      ai-service:
+        condition: service_started
