@@ -2,31 +2,6 @@
 
 A distributed AI agent runner. You give it a goal in natural language; an AI decomposes it into a DAG of subtasks; a Go backend executes the DAG across a worker pool with retries, timeouts, and live progress streaming to a React frontend.
 
-## Quick start
-
-```bash
-# One-time setup — install deps across all subprojects
-make setup
-
-# Generate protobuf code (run whenever .proto files change)
-make proto
-
-# Bring up cockroach, backend, ai service
-make up
-
-# Frontend runs outside compose for hot reload
-cd frontend && bun dev
-```
-
-Then open http://localhost:3000.
-
-### Common commands
-
-| Command | What it does |
-|---|---|
-| `make setup` | Install deps across all subprojects |
-...
-
 ## Why this exists
 
 This is a learning project designed to deeply exercise Go's concurrency model while also getting hands-on with CockroachDB, protobuf/gRPC, ai-sdk (TypeScript), TanStack Start, and shadcn.
@@ -212,32 +187,44 @@ Streaming responses let the frontend see AI tokens arrive live — the backend f
 
 ## Quick start
 
+Everything is wrapped in a `Makefile` at the root. `make help` lists available commands.
+
 ```bash
-# One-time setup — install deps across all subprojects
+# One-time: install deps across all subprojects
 make setup
 
-# Generate protobuf code (run whenever .proto files change)
+# One-time (or after .proto changes): generate Go + TS code from protobuf
 make proto
 
-# Bring up cockroach, backend, ai service
+# Start cockroach + backend + ai service
 make up
 
-# Frontend runs outside compose for hot reload
-cd frontend && bun dev
+# In another terminal, start the frontend with hot reload
+make frontend-run
 ```
 
 Then open http://localhost:3000.
 
-### Common commands
+### Make targets
 
 | Command | What it does |
 |---|---|
-| `make setup` | Install deps across all subprojects |
+| `make` / `make help` | Show all available commands |
+| `make setup` | Install Go deps + bun deps across all subprojects |
 | `make proto` | Regenerate Go + TS code from `.proto` files |
-| `make up` | Start cockroach + backend + ai service |
+| `make up` | Start cockroach + backend + ai service (detached) |
 | `make down` | Stop all services |
 | `make logs` | Tail logs from all services |
-| `make clean` | Remove generated code and containers |
+| `make clean` | Remove generated code and containers (full reset) |
+| `make backend-run` | Run backend locally (outside docker) for fast iteration |
+| `make ai-run` | Run ai service locally (outside docker) |
+| `make frontend-run` | Run frontend dev server with hot reload |
+
+### Dev workflow tips
+
+- **Fast iteration on one service:** stop it in compose, run it locally with `make <service>-run`. The other compose services keep running and will connect to your local instance by port.
+- **After changing `.proto` files:** run `make proto`, then rebuild the relevant service (`docker compose build backend` or `docker compose build ai-service`).
+- **Something feels broken:** `make clean && make setup && make proto && make up` nukes state and rebuilds from scratch.
 
 ## Build plan
 
