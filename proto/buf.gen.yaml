@@ -1,9 +1,9 @@
 # What this does:
-# - Uses buf's remote plugins — runs in the cloud, no local install needed. Pinned versions = reproducible builds.
-# - protocolbuffers/go generates Go message types (structs).
-# - grpc/go generates Go gRPC client + server stubs.
-# - bufbuild/es generates TypeScript types + gRPC stubs.
-# - out: ../gen/go means generated code lands in gen/go at the repo root.
+# - protocolbuffers/go generates Go message types.
+# - connectrpc/go generates Go Connect handlers and clients.
+# - protoc-gen-es generates TypeScript message and service descriptors.
+# - protoc-gen-connect-es generates TypeScript Connect service definitions.
+# - out: ../gen/* writes generated code to the repo-level gen/ directory.
 
 version: v2
 plugins:
@@ -12,13 +12,21 @@ plugins:
     out: ../gen/go
     opt: paths=source_relative
 
-  - remote: buf.build/grpc/go:v1.5.1
+  - remote: buf.build/connectrpc/go
     out: ../gen/go
-    opt: paths=source_relative
+    opt:
+      - paths=source_relative
+      - simple
 
   # --- TypeScript ---
-  - remote: buf.build/bufbuild/es:v2.2.0
+  - local: protoc-gen-es
     out: ../gen/ts
     opt:
       - target=ts
-      - import_extension=js
+      - import_extension=.js
+
+  - local: protoc-gen-connect-es
+    out: ../gen/ts
+    opt:
+      - target=ts
+      - import_extension=.js

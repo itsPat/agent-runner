@@ -6,15 +6,15 @@ import (
 	"errors"
 	"log/slog"
 	"net/http"
+	"net/url"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
-	"google.golang.org/grpc"
-	"google.golang.org/grpc/credentials/insecure"
-
 	agentv1 "github.com/itsPat/agent-runner/gen/go/agent/v1"
+	"github.com/itsPat/agent-runner/gen/go/agent/v1/agentv1connect"
 )
 
 func main() {
@@ -24,26 +24,19 @@ func main() {
 
 	aiServiceAddr := getenv("AI_SERVICE_ADDR", "localhost:8081")
 	httpAddr := getenv("HTTP_ADDR", ":8080")
+	aiServiceBaseURL := normalizeBaseURL(aiServiceAddr)
 
-	// --- Connect to AI service over gRPC ---
-	// Insecure creds are fine for local dev.
-	conn, err := grpc.NewClient(
-		aiServiceAddr,
-		grpc.WithTransportCredentials(insecure.NewCredentials()),
+	// The runner talks to the AI service over Connect on plain HTTP.
+	aiClient := agentv1connect.NewAgentServiceClient(
+		http.DefaultClient,
+		aiServiceBaseURL,
 	)
-	if err != nil {
-		slog.Error("failed to create gRPC client", "err", err)
-		os.Exit(1)
-	}
-	defer conn.Close()
-
-	aiClient := agentv1.NewAgentServiceClient(conn)
 
 	// Prove the wiring: ping the AI service at startup.
 	pingCtx, pingCancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer pingCancel()
 
-	pingResp, err := aiClient.Ping(pingCtx, &agentv1.PingRequest{Message: "hello from backend"})
+	pingResp, err := pingAI(pingCtx, aiClient, "hello from runner")
 	if err != nil {
 		slog.Warn("initial ping to AI service failed (will keep trying via /health)", "err", err)
 	} else {
@@ -58,13 +51,13 @@ func main() {
 		ctx, cancel := context.WithTimeout(r.Context(), 2*time.Second)
 		defer cancel()
 
-		_, err := aiClient.Ping(ctx, &agentv1.PingRequest{Message: "health"})
+		_, err := pingAI(ctx, aiClient, "health")
 		status := map[string]any{
-			"backend":    "ok",
-			"ai_service": "ok",
+			"runner": "ok",
+			"ai":     "ok",
 		}
 		if err != nil {
-			status["ai_service"] = "unreachable: " + err.Error()
+			status["ai"] = "unreachable: " + err.Error()
 		}
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(status)
@@ -105,11 +98,22 @@ func main() {
 	slog.Info("bye")
 }
 
+func pingAI(ctx context.Context, client agentv1connect.AgentServiceClient, message string) (*agentv1.PingResponse, error) {
+	return client.Ping(ctx, &agentv1.PingRequest{Message: message})
+}
+
 func getenv(key, fallback string) string {
 	if v := os.Getenv(key); v != "" {
 		return v
 	}
 	return fallback
+}
+
+func normalizeBaseURL(addr string) string {
+	if strings.HasPrefix(addr, "http://") || strings.HasPrefix(addr, "https://") {
+		return strings.TrimRight(addr, "/")
+	}
+	return (&url.URL{Scheme: "http", Host: addr}).String()
 }
 
 // Dev-only CORS middleware. Good enough for localhost; tighten later.
