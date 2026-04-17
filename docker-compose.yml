@@ -7,35 +7,35 @@ services:
     command: start-single-node --insecure --store=type=mem,size=0.5
     ports:
       - "26257:26257"  # SQL
-      - "8090:8080"    # Cockroach admin UI (remapped to 8090 to avoid conflict with backend)
+      - "8090:8080"    # Cockroach admin UI (remapped to 8090 to avoid conflict with runner)
     healthcheck:
       test: ["CMD", "cockroach", "sql", "--insecure", "-e", "SELECT 1"]
       interval: 5s
       timeout: 3s
       retries: 10
 
-  ai-service:
+  ai:
     build:
-      # Context is repo root so Docker can see services/ai AND gen/ts.
+      # Context is repo root so Docker can see apps/ai AND gen/ts.
       context: .
-      dockerfile: services/ai/Dockerfile
+      dockerfile: apps/ai/Dockerfile
     environment:
-      GRPC_PORT: "8081"
+      PORT: "8081"
     ports:
       - "8081:8081"
 
-  backend:
+  runner:
     build:
       context: .
-      dockerfile: backend/Dockerfile
+      dockerfile: apps/runner/Dockerfile
     environment:
       HTTP_ADDR: ":8080"
-      AI_SERVICE_ADDR: "ai-service:8081"
+      AI_SERVICE_ADDR: "ai:8081"
       COCKROACH_DSN: "postgres://root@cockroach:26257/defaultdb?sslmode=disable"
     ports:
       - "8080:8080"
     depends_on:
       cockroach:
         condition: service_healthy
-      ai-service:
+      ai:
         condition: service_started

@@ -10,4 +10,4 @@
 **/Dockerfile
 docker-compose.yml
 *.md
-frontend/
+apps/web/
