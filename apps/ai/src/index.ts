@@ -5,7 +5,6 @@ import { createServer } from "node:http";
 
 import { AgentService } from "@gen/agent/v1/service_pb.js";
 import {
-  type PingRequest,
   PingResponseSchema,
 } from "@gen/agent/v1/service_pb.js";
 
@@ -13,7 +12,7 @@ const PORT = Number(process.env.PORT ?? "8081");
 
 function routes(router: ConnectRouter) {
   router.service(AgentService, {
-    async ping(req: PingRequest) {
+    async ping(req) {
       const message = req.message || "<no message>";
       console.log(`[ai] ping received: "${message}"`);
 

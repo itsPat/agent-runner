@@ -9,8 +9,11 @@
     "esModuleInterop": true,
     "resolveJsonModule": true,
     "baseUrl": ".",
+    "types": ["node"],
     "paths": {
-      "@gen/*": ["../../gen/ts/*"]
+      "@gen/*": ["../../gen/ts/*"],
+      "@bufbuild/protobuf": ["./node_modules/@bufbuild/protobuf/dist/cjs/index.d.ts"],
+      "@bufbuild/protobuf/codegenv2": ["./node_modules/@bufbuild/protobuf/dist/cjs/codegenv2/index.d.ts"]
     },
 
     // Bundler mode
