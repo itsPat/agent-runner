@@ -24,19 +24,41 @@ import (
 //     correct, never the other way around.
 type Executor struct {
 	store        ports.TaskStore
+	events       ports.EventStore
 	bus          ports.EventBus
 	taskDuration time.Duration
 	runBudget    time.Duration
 }
 
 // NewExecutor constructs an executor with sensible Phase 1 timings.
-func NewExecutor(store ports.TaskStore, bus ports.EventBus) *Executor {
+func NewExecutor(store ports.TaskStore, events ports.EventStore, bus ports.EventBus) *Executor {
 	return &Executor{
 		store:        store,
+		events:       events,
 		bus:          bus,
 		taskDuration: 1500 * time.Millisecond,
 		runBudget:    2 * time.Minute,
 	}
+}
+
+// emit persists the event then broadcasts it. Persist-first means a
+// dropped broadcast leaves the durable record intact — a client reading
+// from the store via cursor resume will still see the event. The reverse
+// order would risk broadcasting state that never made it to disk.
+//
+// Returns the persisted event's assigned Seq for callers that want to
+// log or correlate.
+func (e *Executor) emit(ctx context.Context, ev domain.Event) int64 {
+	log := slog.With("run_id", ev.RunID, "kind", ev.Kind)
+	if err := e.events.Append(ctx, &ev); err != nil {
+		log.Error("persist event", "err", err)
+		// Best-effort broadcast even if persistence failed; at least live
+		// subscribers see something. A production system would alert here.
+	}
+	if err := e.bus.Publish(ctx, ev); err != nil {
+		log.Warn("publish event", "err", err)
+	}
+	return ev.Seq
 }
 
 // Emit kicks off execution for a freshly-created run. It returns
@@ -72,7 +94,7 @@ func (e *Executor) execute(run domain.Run, tasks []domain.Task) {
 		log.Error("mark run running", "err", err)
 		return
 	}
-	_ = e.bus.Publish(ctx, domain.NewEvent(run.ID, domain.EventRunStarted, nil))
+	e.emit(ctx, domain.NewEvent(run.ID, domain.EventRunStarted, nil))
 
 	for _, task := range dag.TopologicalOrder() {
 		if ctx.Err() != nil {
@@ -92,7 +114,7 @@ func (e *Executor) execute(run domain.Run, tasks []domain.Task) {
 		log.Error("mark run completed", "err", err)
 		return
 	}
-	_ = e.bus.Publish(ctx, domain.NewEvent(run.ID, domain.EventRunCompleted, nil))
+	e.emit(ctx, domain.NewEvent(run.ID, domain.EventRunCompleted, nil))
 	log.Info("run completed")
 }
 
@@ -105,7 +127,7 @@ func (e *Executor) executeTask(ctx context.Context, runID uuid.UUID, task domain
 	if err := e.store.MarkTaskRunning(ctx, task.ID, start); err != nil {
 		return fmt.Errorf("mark running: %w", err)
 	}
-	_ = e.bus.Publish(ctx, domain.NewTaskEvent(runID, task.ID, domain.EventTaskStarted, nil))
+	e.emit(ctx, domain.NewTaskEvent(runID, task.ID, domain.EventTaskStarted, nil))
 	log.Info("task started")
 
 	result, err := e.doWork(ctx, task)
@@ -115,7 +137,7 @@ func (e *Executor) executeTask(ctx context.Context, runID uuid.UUID, task domain
 			log.Error("mark task failed", "err", markErr)
 		}
 		payload, _ := json.Marshal(map[string]string{"error": err.Error()})
-		_ = e.bus.Publish(ctx, domain.NewTaskEvent(runID, task.ID, domain.EventTaskFailed, payload))
+		e.emit(ctx, domain.NewTaskEvent(runID, task.ID, domain.EventTaskFailed, payload))
 		return err
 	}
 
@@ -123,7 +145,7 @@ func (e *Executor) executeTask(ctx context.Context, runID uuid.UUID, task domain
 	if err := e.store.MarkTaskCompleted(ctx, task.ID, result, end); err != nil {
 		return fmt.Errorf("mark completed: %w", err)
 	}
-	_ = e.bus.Publish(ctx, domain.NewTaskEvent(runID, task.ID, domain.EventTaskCompleted, nil))
+	e.emit(ctx, domain.NewTaskEvent(runID, task.ID, domain.EventTaskCompleted, nil))
 	log.Info("task completed")
 	return nil
 }
@@ -154,5 +176,5 @@ func (e *Executor) failRun(ctx context.Context, runID uuid.UUID, reason string) 
 		slog.Error("mark run failed", "run_id", runID, "err", err)
 	}
 	payload, _ := json.Marshal(map[string]string{"reason": reason})
-	_ = e.bus.Publish(ctx, domain.NewEvent(runID, domain.EventRunFailed, payload))
+	e.emit(ctx, domain.NewEvent(runID, domain.EventRunFailed, payload))
 }

@@ -23,6 +23,10 @@ const (
 
 // Event describes something that happened during a run's execution. It is
 // the unit produced by the executor and consumed by SSE subscribers.
+//
+// Seq is assigned by the EventStore at Append time and is monotonically
+// increasing per run. It is the cursor value used for replay-from-point
+// in the SSE stream. In-memory events not yet persisted have Seq == 0.
 type Event struct {
 	ID        uuid.UUID
 	RunID     uuid.UUID
@@ -30,6 +34,7 @@ type Event struct {
 	Kind      EventKind
 	Payload   json.RawMessage
 	CreatedAt time.Time
+	Seq       int64
 }
 
 // NewEvent builds a run-scoped event with a generated ID.

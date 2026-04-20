@@ -70,8 +70,9 @@ func main() {
 
 	// --- App layer: wire ports to use cases ---
 	taskStore := cockroach.NewTaskStore(pool)
+	eventStore := cockroach.NewEventStore(pool)
 	eventBus := memeventbus.New()
-	executor := app.NewExecutor(taskStore, eventBus)
+	executor := app.NewExecutor(taskStore, eventStore, eventBus)
 	runService := app.NewRunService(taskStore, executor)
 
 	// --- HTTP server ---
@@ -79,8 +80,9 @@ func main() {
 
 	// Public API (POST /runs, GET /runs/:id) from the httpapi adapter.
 	httpapi.NewRouter(runService).Register(mux)
-	// SSE: GET /runs/:id/events
-	httpapi.NewSSEHandler(eventBus).Register(mux)
+	// SSE: GET /runs/:id/events — combines EventStore for replay with
+	// EventBus for live updates.
+	httpapi.NewSSEHandler(eventStore, eventBus).Register(mux)
 
 	mux.HandleFunc("GET /health", func(w http.ResponseWriter, r *http.Request) {
 		// Check we can still reach the AI service.
