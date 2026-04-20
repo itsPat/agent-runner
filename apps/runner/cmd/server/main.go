@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/itsPat/agent-runner/apps/runner/internal/adapters/cockroach"
+	"github.com/itsPat/agent-runner/apps/runner/internal/adapters/grpcai"
 	"github.com/itsPat/agent-runner/apps/runner/internal/adapters/httpapi"
 	"github.com/itsPat/agent-runner/apps/runner/internal/adapters/memeventbus"
 	"github.com/itsPat/agent-runner/apps/runner/internal/app"
@@ -72,8 +73,9 @@ func main() {
 	taskStore := cockroach.NewTaskStore(pool)
 	eventStore := cockroach.NewEventStore(pool)
 	eventBus := memeventbus.New()
+	planner := grpcai.NewPlanner(aiClient)
 	executor := app.NewExecutor(taskStore, eventStore, eventBus)
-	runService := app.NewRunService(taskStore, executor)
+	runService := app.NewRunService(taskStore, planner, executor)
 
 	// --- HTTP server ---
 	mux := http.NewServeMux()

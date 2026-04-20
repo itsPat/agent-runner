@@ -5,7 +5,6 @@ package app
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 
@@ -18,28 +17,32 @@ import (
 // RunService is the orchestration layer for run-related use cases.
 type RunService struct {
 	store    ports.TaskStore
+	planner  ports.AIPlanner
 	executor *Executor
 }
 
-func NewRunService(store ports.TaskStore, executor *Executor) *RunService {
-	return &RunService{store: store, executor: executor}
+func NewRunService(store ports.TaskStore, planner ports.AIPlanner, executor *Executor) *RunService {
+	return &RunService{store: store, planner: planner, executor: executor}
 }
 
-// SubmitGoal persists a new Run with a hardcoded 2-task DAG. In Phase 2 the
-// hardcoded planner is replaced by a real AIPlanner port; this method's
-// signature does not change.
+// SubmitGoal plans the goal into a DAG via the AIPlanner port, persists
+// it, and kicks off execution. Returns the Run immediately — planning
+// runs inside this call (it's fast enough to sit on the hot path) but
+// execution happens on a background goroutine.
 func (s *RunService) SubmitGoal(ctx context.Context, goal string) (domain.Run, error) {
 	if goal == "" {
 		return domain.Run{}, fmt.Errorf("goal is required")
 	}
 
 	run := domain.NewRun(goal)
-	tasks := stubDAGForGoal(run, goal)
 
-	dag, err := domain.NewDAG(run, tasks)
+	// The planner returns an already-validated DAG (cycle-free,
+	// reference-integrity). We do not re-call NewDAG here.
+	dag, err := s.planner.PlanGoal(ctx, run)
 	if err != nil {
-		return domain.Run{}, fmt.Errorf("build dag: %w", err)
+		return domain.Run{}, fmt.Errorf("plan goal: %w", err)
 	}
+
 	if err := s.store.CreateRun(ctx, dag); err != nil {
 		return domain.Run{}, fmt.Errorf("persist run: %w", err)
 	}
@@ -72,15 +75,3 @@ func (s *RunService) GetRunDetail(ctx context.Context, id uuid.UUID) (RunDetail,
 	return RunDetail{Run: run, Tasks: tasks}, nil
 }
 
-// stubDAGForGoal returns a deterministic 2-task DAG: fetch -> transform.
-// This is Phase 1 scaffolding. Phase 2 replaces it with the AI planner.
-func stubDAGForGoal(run domain.Run, goal string) []domain.Task {
-	fetchSpec, _ := json.Marshal(map[string]string{"goal": goal})
-	fetch := domain.NewTask(run.ID, domain.TaskKindFetch, fetchSpec, nil)
-
-	transformSpec, _ := json.Marshal(map[string]string{"op": "summarize"})
-	transform := domain.NewTask(run.ID, domain.TaskKindTransform, transformSpec,
-		[]uuid.UUID{fetch.ID})
-
-	return []domain.Task{fetch, transform}
-}

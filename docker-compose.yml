@@ -21,6 +21,11 @@ services:
       dockerfile: apps/ai/Dockerfile
     environment:
       PORT: "8081"
+      # Loaded from repo-root .env (docker-compose auto-loads it). Empty
+      # values are allowed at boot — PlanGoal will fail with a clear
+      # error until the key is set.
+      OPENROUTER_API_KEY: "${OPENROUTER_API_KEY:-}"
+      OPENROUTER_MODEL: "${OPENROUTER_MODEL:-}"
     ports:
       - "8081:8081"
 

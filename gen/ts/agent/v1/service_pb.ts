@@ -10,7 +10,7 @@ import type { Message } from "@bufbuild/protobuf";
  * Describes the file agent/v1/service.proto.
  */
 export const file_agent_v1_service: GenFile = /*@__PURE__*/
-  fileDesc("ChZhZ2VudC92MS9zZXJ2aWNlLnByb3RvEghhZ2VudC52MSIeCgtQaW5nUmVxdWVzdBIPCgdtZXNzYWdlGAEgASgJIjkKDFBpbmdSZXNwb25zZRIPCgdtZXNzYWdlGAEgASgJEhgKEHNlcnZlcl90aW1lX3VuaXgYAiABKAMyRQoMQWdlbnRTZXJ2aWNlEjUKBFBpbmcSFS5hZ2VudC52MS5QaW5nUmVxdWVzdBoWLmFnZW50LnYxLlBpbmdSZXNwb25zZUI4WjZnaXRodWIuY29tL2l0c1BhdC9hZ2VudC1ydW5uZXIvZ2VuL2dvL2FnZW50L3YxO2FnZW50djFiBnByb3RvMw");
+  fileDesc("ChZhZ2VudC92MS9zZXJ2aWNlLnByb3RvEghhZ2VudC52MSIeCgtQaW5nUmVxdWVzdBIPCgdtZXNzYWdlGAEgASgJIjkKDFBpbmdSZXNwb25zZRIPCgdtZXNzYWdlGAEgASgJEhgKEHNlcnZlcl90aW1lX3VuaXgYAiABKAMiHwoPUGxhbkdvYWxSZXF1ZXN0EgwKBGdvYWwYASABKAkiOAoQUGxhbkdvYWxSZXNwb25zZRIkCgV0YXNrcxgBIAMoCzIVLmFnZW50LnYxLlBsYW5uZWRUYXNrIlAKC1BsYW5uZWRUYXNrEgwKBG5hbWUYASABKAkSDAoEa2luZBgCIAEoCRIRCglzcGVjX2pzb24YAyABKAkSEgoKZGVwZW5kc19vbhgEIAMoCTKIAQoMQWdlbnRTZXJ2aWNlEjUKBFBpbmcSFS5hZ2VudC52MS5QaW5nUmVxdWVzdBoWLmFnZW50LnYxLlBpbmdSZXNwb25zZRJBCghQbGFuR29hbBIZLmFnZW50LnYxLlBsYW5Hb2FsUmVxdWVzdBoaLmFnZW50LnYxLlBsYW5Hb2FsUmVzcG9uc2VCOFo2Z2l0aHViLmNvbS9pdHNQYXQvYWdlbnQtcnVubmVyL2dlbi9nby9hZ2VudC92MTthZ2VudHYxYgZwcm90bzM");
 
 /**
  * @generated from message agent.v1.PingRequest
@@ -52,8 +52,86 @@ export const PingResponseSchema: GenMessage<PingResponse> = /*@__PURE__*/
   messageDesc(file_agent_v1_service, 1);
 
 /**
- * Phase 0 placeholder. Real RPCs (PlanGoal, ExecuteTask, Summarize) land in Phase 2+.
+ * @generated from message agent.v1.PlanGoalRequest
+ */
+export type PlanGoalRequest = Message<"agent.v1.PlanGoalRequest"> & {
+  /**
+   * @generated from field: string goal = 1;
+   */
+  goal: string;
+};
+
+/**
+ * Describes the message agent.v1.PlanGoalRequest.
+ * Use `create(PlanGoalRequestSchema)` to create a new message.
+ */
+export const PlanGoalRequestSchema: GenMessage<PlanGoalRequest> = /*@__PURE__*/
+  messageDesc(file_agent_v1_service, 2);
+
+/**
+ * @generated from message agent.v1.PlanGoalResponse
+ */
+export type PlanGoalResponse = Message<"agent.v1.PlanGoalResponse"> & {
+  /**
+   * @generated from field: repeated agent.v1.PlannedTask tasks = 1;
+   */
+  tasks: PlannedTask[];
+};
+
+/**
+ * Describes the message agent.v1.PlanGoalResponse.
+ * Use `create(PlanGoalResponseSchema)` to create a new message.
+ */
+export const PlanGoalResponseSchema: GenMessage<PlanGoalResponse> = /*@__PURE__*/
+  messageDesc(file_agent_v1_service, 3);
+
+/**
+ * A single node in the planned DAG. The AI service assigns a stable
+ * string `name` the LLM chose; the Go runner maps those names to UUIDs
+ * when persisting. `spec_json` is a JSON document shaped per-kind —
+ * opaque to the transport.
  *
+ * @generated from message agent.v1.PlannedTask
+ */
+export type PlannedTask = Message<"agent.v1.PlannedTask"> & {
+  /**
+   * LLM-chosen identifier. Referenced by `depends_on` in other tasks.
+   * Unique within a single PlanGoalResponse.
+   *
+   * @generated from field: string name = 1;
+   */
+  name: string;
+
+  /**
+   * "ai" | "fetch" | "transform"
+   *
+   * @generated from field: string kind = 2;
+   */
+  kind: string;
+
+  /**
+   * JSON-encoded, kind-specific parameters. Empty string means {}.
+   *
+   * @generated from field: string spec_json = 3;
+   */
+  specJson: string;
+
+  /**
+   * Names of upstream tasks this task depends on. Empty for roots.
+   *
+   * @generated from field: repeated string depends_on = 4;
+   */
+  dependsOn: string[];
+};
+
+/**
+ * Describes the message agent.v1.PlannedTask.
+ * Use `create(PlannedTaskSchema)` to create a new message.
+ */
+export const PlannedTaskSchema: GenMessage<PlannedTask> = /*@__PURE__*/
+  messageDesc(file_agent_v1_service, 4);
+
+/**
  * @generated from service agent.v1.AgentService
  */
 export const AgentService: GenService<{
@@ -64,6 +142,16 @@ export const AgentService: GenService<{
     methodKind: "unary";
     input: typeof PingRequestSchema;
     output: typeof PingResponseSchema;
+  },
+  /**
+   * Decomposes a natural-language goal into a DAG of tasks.
+   *
+   * @generated from rpc agent.v1.AgentService.PlanGoal
+   */
+  planGoal: {
+    methodKind: "unary";
+    input: typeof PlanGoalRequestSchema;
+    output: typeof PlanGoalResponseSchema;
   },
 }> = /*@__PURE__*/
   serviceDesc(file_agent_v1_service, 0);

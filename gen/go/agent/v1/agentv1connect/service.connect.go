@@ -35,11 +35,15 @@ const (
 const (
 	// AgentServicePingProcedure is the fully-qualified name of the AgentService's Ping RPC.
 	AgentServicePingProcedure = "/agent.v1.AgentService/Ping"
+	// AgentServicePlanGoalProcedure is the fully-qualified name of the AgentService's PlanGoal RPC.
+	AgentServicePlanGoalProcedure = "/agent.v1.AgentService/PlanGoal"
 )
 
 // AgentServiceClient is a client for the agent.v1.AgentService service.
 type AgentServiceClient interface {
 	Ping(context.Context, *v1.PingRequest) (*v1.PingResponse, error)
+	// Decomposes a natural-language goal into a DAG of tasks.
+	PlanGoal(context.Context, *v1.PlanGoalRequest) (*v1.PlanGoalResponse, error)
 }
 
 // NewAgentServiceClient constructs a client for the agent.v1.AgentService service. By default, it
@@ -59,12 +63,19 @@ func NewAgentServiceClient(httpClient connect.HTTPClient, baseURL string, opts .
 			connect.WithSchema(agentServiceMethods.ByName("Ping")),
 			connect.WithClientOptions(opts...),
 		),
+		planGoal: connect.NewClient[v1.PlanGoalRequest, v1.PlanGoalResponse](
+			httpClient,
+			baseURL+AgentServicePlanGoalProcedure,
+			connect.WithSchema(agentServiceMethods.ByName("PlanGoal")),
+			connect.WithClientOptions(opts...),
+		),
 	}
 }
 
 // agentServiceClient implements AgentServiceClient.
 type agentServiceClient struct {
-	ping *connect.Client[v1.PingRequest, v1.PingResponse]
+	ping     *connect.Client[v1.PingRequest, v1.PingResponse]
+	planGoal *connect.Client[v1.PlanGoalRequest, v1.PlanGoalResponse]
 }
 
 // Ping calls agent.v1.AgentService.Ping.
@@ -76,9 +87,20 @@ func (c *agentServiceClient) Ping(ctx context.Context, req *v1.PingRequest) (*v1
 	return nil, err
 }
 
+// PlanGoal calls agent.v1.AgentService.PlanGoal.
+func (c *agentServiceClient) PlanGoal(ctx context.Context, req *v1.PlanGoalRequest) (*v1.PlanGoalResponse, error) {
+	response, err := c.planGoal.CallUnary(ctx, connect.NewRequest(req))
+	if response != nil {
+		return response.Msg, err
+	}
+	return nil, err
+}
+
 // AgentServiceHandler is an implementation of the agent.v1.AgentService service.
 type AgentServiceHandler interface {
 	Ping(context.Context, *v1.PingRequest) (*v1.PingResponse, error)
+	// Decomposes a natural-language goal into a DAG of tasks.
+	PlanGoal(context.Context, *v1.PlanGoalRequest) (*v1.PlanGoalResponse, error)
 }
 
 // NewAgentServiceHandler builds an HTTP handler from the service implementation. It returns the
@@ -94,10 +116,18 @@ func NewAgentServiceHandler(svc AgentServiceHandler, opts ...connect.HandlerOpti
 		connect.WithSchema(agentServiceMethods.ByName("Ping")),
 		connect.WithHandlerOptions(opts...),
 	)
+	agentServicePlanGoalHandler := connect.NewUnaryHandlerSimple(
+		AgentServicePlanGoalProcedure,
+		svc.PlanGoal,
+		connect.WithSchema(agentServiceMethods.ByName("PlanGoal")),
+		connect.WithHandlerOptions(opts...),
+	)
 	return "/agent.v1.AgentService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case AgentServicePingProcedure:
 			agentServicePingHandler.ServeHTTP(w, r)
+		case AgentServicePlanGoalProcedure:
+			agentServicePlanGoalHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -109,4 +139,8 @@ type UnimplementedAgentServiceHandler struct{}
 
 func (UnimplementedAgentServiceHandler) Ping(context.Context, *v1.PingRequest) (*v1.PingResponse, error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("agent.v1.AgentService.Ping is not implemented"))
+}
+
+func (UnimplementedAgentServiceHandler) PlanGoal(context.Context, *v1.PlanGoalRequest) (*v1.PlanGoalResponse, error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("agent.v1.AgentService.PlanGoal is not implemented"))
 }

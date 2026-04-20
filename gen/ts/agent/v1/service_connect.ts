@@ -3,12 +3,10 @@
 /* eslint-disable */
 // @ts-nocheck
 
-import { PingRequest, PingResponse } from "./service_pb.js";
+import { PingRequest, PingResponse, PlanGoalRequest, PlanGoalResponse } from "./service_pb.js";
 import { MethodKind } from "@bufbuild/protobuf";
 
 /**
- * Phase 0 placeholder. Real RPCs (PlanGoal, ExecuteTask, Summarize) land in Phase 2+.
- *
  * @generated from service agent.v1.AgentService
  */
 export const AgentService = {
@@ -21,6 +19,17 @@ export const AgentService = {
       name: "Ping",
       I: PingRequest,
       O: PingResponse,
+      kind: MethodKind.Unary,
+    },
+    /**
+     * Decomposes a natural-language goal into a DAG of tasks.
+     *
+     * @generated from rpc agent.v1.AgentService.PlanGoal
+     */
+    planGoal: {
+      name: "PlanGoal",
+      I: PlanGoalRequest,
+      O: PlanGoalResponse,
       kind: MethodKind.Unary,
     },
   }

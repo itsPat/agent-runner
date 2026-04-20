@@ -6,9 +6,11 @@ package agent.v1;
 // The part after the semicolon is the Go package name.
 option go_package = "github.com/itsPat/agent-runner/gen/go/agent/v1;agentv1";
 
-// Phase 0 placeholder. Real RPCs (PlanGoal, ExecuteTask, Summarize) land in Phase 2+.
 service AgentService {
   rpc Ping(PingRequest) returns (PingResponse);
+
+  // Decomposes a natural-language goal into a DAG of tasks.
+  rpc PlanGoal(PlanGoalRequest) returns (PlanGoalResponse);
 }
 
 message PingRequest {
@@ -18,4 +20,31 @@ message PingRequest {
 message PingResponse {
   string message = 1;
   int64 server_time_unix = 2;
+}
+
+message PlanGoalRequest {
+  string goal = 1;
+}
+
+message PlanGoalResponse {
+  repeated PlannedTask tasks = 1;
+}
+
+// A single node in the planned DAG. The AI service assigns a stable
+// string `name` the LLM chose; the Go runner maps those names to UUIDs
+// when persisting. `spec_json` is a JSON document shaped per-kind —
+// opaque to the transport.
+message PlannedTask {
+  // LLM-chosen identifier. Referenced by `depends_on` in other tasks.
+  // Unique within a single PlanGoalResponse.
+  string name = 1;
+
+  // "ai" | "fetch" | "transform"
+  string kind = 2;
+
+  // JSON-encoded, kind-specific parameters. Empty string means {}.
+  string spec_json = 3;
+
+  // Names of upstream tasks this task depends on. Empty for roots.
+  repeated string depends_on = 4;
 }

@@ -2,7 +2,7 @@
 
 > **Purpose:** A running synthesis of what we've learned while building this project, organized by phase. A companion to `PROJECT_SPEC.md` (what we're building) and `ROADMAP.md` (the phased plan).
 >
-> **Last updated:** end of Phase 1.
+> **Last updated:** end of Phase 2.
 
 ---
 
@@ -251,6 +251,45 @@ Phase 1 built the full user-facing loop end-to-end with a stubbed planner and st
 - Hydrate-then-listen is the right pattern whenever your stream doesn't carry *every* field the UI needs.
 - Reach for `useReducer` when state transitions feel action-shaped. Scatters of `setState` inside event handlers are a smell.
 - EventSource + `Last-Event-ID` + useEffect cleanup is maybe 50 lines total, and it gives you live-updating UI that survives network blips. Huge bang-for-buck.
+
+---
+
+## Phase 2 — real AI planner
+
+**What we built.** Replaced `stubDAGForGoal` with a live LLM-generated DAG. Added `PlanGoal` RPC to the proto. Implemented `planGoal` in the TS AI service using ai-sdk 6's `generateText` + `Output.object`. Created `ports.AIPlanner` and `adapters/grpcai.Planner`. Iterated the Zod schema to a discriminated union when the first attempt returned empty specs. Swapped Anthropic for OpenRouter (via the OpenAI-compatible ai-sdk provider pointed at `https://openrouter.ai/api/v1`).
+
+**Teachable bits.**
+
+1. **ai-sdk 6 changed the structured-output API.** `generateObject` is gone; use `generateText({ output: Output.object({ schema }) })` instead. Breaking change worth knowing if you learned ai-sdk on the old API.
+2. **OpenRouter is OpenAI-API-compatible.** `createOpenAI({ baseURL: "https://openrouter.ai/api/v1", apiKey, name: "openrouter" })` is the whole integration. No dedicated provider needed. Model IDs follow `provider/model` convention (e.g. `anthropic/claude-sonnet-4.5`). More transferable learning than a bespoke OpenRouter plugin.
+3. **Zod `.refine()` doesn't round-trip through JSON Schema.** Structured-output endpoints consume a subset of JSON Schema that covers primitives, enums, arrays, objects, unions — but not custom predicates. A `.refine()` makes the outer Zod reject what the endpoint's schema accepted, causing hard failures rather than retries. Fix: model the constraint *structurally* (discriminated unions, enums, nested objects), not with custom predicates.
+4. **Zod `.default({})` reads as "field is optional" to the model.** When the schema said `spec: z.record(z.string(), z.any()).default({})`, the model happily returned `{}` every time. JSON Schema `default` is a hint the model treats as "skip this."
+5. **Discriminated unions fix "model skips details" problems.** Moving from `spec: record(string, any)` to `z.discriminatedUnion("kind", [FetchTaskSchema, TransformTaskSchema, AITaskSchema])` — each branch with its own required spec shape — made the model fill in `url` for fetch, `instruction` for ai, `op` for transform. The JSON Schema `oneOf` forces the model to pick a branch and satisfy its required fields.
+6. **Two-pass name → UUID mapping in the adapter.** The LLM references tasks by string name (`"fetch_catl_wiki"`); our domain uses UUIDs. Pass 1: assign UUIDs to every name up front. Pass 2: translate each task, resolving `depends_on` names through the map. Without pass 1, forward references (depending on a not-yet-seen task) would fail.
+7. **Return the validated `domain.DAG`, not `[]Task`.** The adapter calls `NewDAG` as its final gate so callers can trust what they receive. Keeps cycle/reference validation in one place (the domain) rather than duplicated across every adapter.
+8. **Defensive wall count: two.** TS-side Zod validates structure; Go-side `NewDAG` validates DAG invariants. Two walls because the LLM is an untrusted input and each language can check different things cheaply.
+9. **Prompt + schema as parallel sources of truth.** The system prompt *says* `spec` must be non-empty and specific. The schema *forces* it via required fields. Either alone is weaker — prompts can be ignored, schemas without rich structure are too permissive. Both together are robust.
+10. **Makefile loading `.env` for local dev.** Docker Compose auto-loads `.env` from its cwd. For `make ai-run` to match behavior, a tiny `ENV_LOADER = set -a; [ -f .env ] && . ./.env; set +a;` prefix makes targets pick up the same file. Repo root `.env`, git-ignored.
+
+**Decisions that weren't obvious.**
+
+- **Planning runs synchronously inside `SubmitGoal`, not on a background goroutine.** Planning takes a few seconds — slower than typical HTTP but fast enough to sit on the hot path, and makes error surfacing trivial (4xx on planner failure). Alternative (plan async, update run when ready) would require an intermediate "planning" run state plus a separate event on plan completion. Not worth the complexity for sub-10s planning.
+- **Specs as JSON string in the proto, not `google.protobuf.Struct`.** `Struct` carries awkward TS↔Go type gymnastics. String + `JSON.stringify`/`json.RawMessage` has zero ceremony on either side. Semantic loss is nil — the payload is opaque anyway.
+- **Dropped the `@ai-sdk/anthropic` package entirely.** When we swapped to OpenRouter, the Anthropic provider would have been dead code. Remove, don't keep "just in case."
+
+**Deliberately omitted.**
+
+- `ExecuteTask` RPC. Phase 3 — that's where task kinds actually run rather than sleep.
+- `Summarize` RPC. Phase 3, for the final answer assembly.
+- Streaming responses. Phase 3, when AI tasks emit tokens live.
+- Planner retries on model errors. ai-sdk retries schema mismatches automatically; we don't retry network errors explicitly. Add if flakiness hits.
+- Planner caching. Same goal submitted twice → two LLM calls. Could cache by goal hash but Phase 1's runs are rarely identical.
+
+**Three takeaways.**
+
+- **Model the structure you want the LLM to produce.** Discriminated unions over `record(string, any)`. Required fields over defaulted ones. The schema is a teacher, not just a validator.
+- **JSON Schema is a lowest-common-denominator.** Keep Zod schemas to what round-trips cleanly. Validate richer invariants separately, either in the prompt or after parsing.
+- **OpenRouter is just OpenAI-compatible HTTP.** Learning the "generic OpenAI provider pointed at base URL" pattern transfers to Groq, Together, Fireworks, self-hosted llama.cpp, and any future gateway. A dedicated provider per gateway is rarely worth the extra package.
 
 ---
 

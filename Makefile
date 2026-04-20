@@ -49,11 +49,15 @@ clean:
 
 # --- Dev shortcuts (run without docker for fast iteration) ---
 
+# Load repo-root .env into the shell so local `make` targets see
+# keys the same way `docker compose` auto-loads them.
+ENV_LOADER = set -a; [ -f .env ] && . ./.env; set +a;
+
 backend-run:
-	cd apps/runner && go run ./cmd/server
+	$(ENV_LOADER) cd apps/runner && go run ./cmd/server
 
 ai-run:
-	cd apps/ai && bun run dev
+	$(ENV_LOADER) cd apps/ai && bun run dev
 
 frontend-run:
 	cd apps/web && bun dev
