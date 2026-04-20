@@ -1,6 +1,6 @@
 # Project Spec: Distributed AI Agent Runner
 
-> **Status:** Design / pre-build
+> **Status:** Phase 0 complete. Repo layout, ConnectRPC wiring, and health-check flow are in place.
 > **Purpose:** Source of truth for what we're building and why. All decisions live here.
 
 ---
@@ -11,7 +11,7 @@ A distributed task runner where users submit goals, an AI decomposes them into a
 
 ## Why this project
 
-Chosen to deeply exercise **Go's concurrency model** while touching CockroachDB, ai-sdk (TypeScript), protobuf, TanStack Start, and shadcn. The project is useful enough to demo to someone, but the primary goal is stack learning — Go especially.
+Chosen to deeply exercise **Go's concurrency model** while touching CockroachDB, ai-sdk (TypeScript), protobuf, ConnectRPC, TanStack Start, and shadcn. The project is useful enough to demo to someone, but the primary goal is stack learning — Go especially.
 
 ### What this project is *not*
 

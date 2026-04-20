@@ -181,7 +181,7 @@ Streaming responses let the web app see AI tokens arrive live — the runner for
 
 ## Prerequisites
 
-- **Go** 1.22+
+- **Go** 1.24+
 - **Bun** 1.1+
 - **Docker** + Docker Compose
 - **buf** CLI (`brew install bufbuild/buf/buf`)

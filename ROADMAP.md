@@ -58,7 +58,7 @@ agent-runner/
 - **0.6** Docker Compose with Cockroach (single node), runner, ai service. Web app runs locally for dev speed.
 - **0.7** Runner calls `Ping` on the AI service over ConnectRPC successfully at startup, logs the response.
 
-**Done when:** `docker compose up` → web app loads → web app shows "runner healthy" → runner logs show successful Connect ping to AI service → Cockroach is reachable.
+**Done when:** `docker compose up` brings up Cockroach, runner, and AI service; `make frontend-run` serves the web app; the web app shows "runner healthy"; runner logs show a successful Connect ping to the AI service; Cockroach is reachable.
 
 ---
 
