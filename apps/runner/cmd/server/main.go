@@ -14,6 +14,8 @@ import (
 	"time"
 
 	"github.com/itsPat/agent-runner/apps/runner/internal/adapters/cockroach"
+	"github.com/itsPat/agent-runner/apps/runner/internal/adapters/httpapi"
+	"github.com/itsPat/agent-runner/apps/runner/internal/app"
 	agentv1 "github.com/itsPat/agent-runner/gen/go/agent/v1"
 	"github.com/itsPat/agent-runner/gen/go/agent/v1/agentv1connect"
 )
@@ -65,8 +67,15 @@ func main() {
 		slog.Info("ping successful", "response", pingResp.Message, "server_time", pingResp.ServerTimeUnix)
 	}
 
+	// --- App layer: wire ports to use cases ---
+	taskStore := cockroach.NewTaskStore(pool)
+	runService := app.NewRunService(taskStore)
+
 	// --- HTTP server ---
 	mux := http.NewServeMux()
+
+	// Public API (POST /runs, GET /runs/:id) from the httpapi adapter.
+	httpapi.NewRouter(runService).Register(mux)
 
 	mux.HandleFunc("GET /health", func(w http.ResponseWriter, r *http.Request) {
 		// Check we can still reach the AI service.
