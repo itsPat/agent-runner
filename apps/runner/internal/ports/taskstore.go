@@ -5,7 +5,9 @@ package ports
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
+	"time"
 
 	"github.com/google/uuid"
 
@@ -37,4 +39,25 @@ type TaskStore interface {
 	// should GetRun first if they need to distinguish "no tasks" from
 	// "no run."
 	ListTasks(ctx context.Context, runID uuid.UUID) ([]domain.Task, error)
+
+	// MarkRunRunning sets a pending run's status to running.
+	MarkRunRunning(ctx context.Context, runID uuid.UUID, at time.Time) error
+
+	// MarkRunCompleted sets status to completed and stamps completed_at.
+	MarkRunCompleted(ctx context.Context, runID uuid.UUID, at time.Time) error
+
+	// MarkRunFailed sets status to failed and stamps completed_at.
+	MarkRunFailed(ctx context.Context, runID uuid.UUID, at time.Time) error
+
+	// MarkTaskRunning sets a task's status to running, stamps started_at,
+	// and increments attempts.
+	MarkTaskRunning(ctx context.Context, taskID uuid.UUID, at time.Time) error
+
+	// MarkTaskCompleted sets status to completed, stamps completed_at,
+	// and persists the task's result payload.
+	MarkTaskCompleted(ctx context.Context, taskID uuid.UUID, result json.RawMessage, at time.Time) error
+
+	// MarkTaskFailed sets status to failed, stamps completed_at, and
+	// persists the error message.
+	MarkTaskFailed(ctx context.Context, taskID uuid.UUID, errMsg string, at time.Time) error
 }

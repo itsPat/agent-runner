@@ -140,6 +140,80 @@ func (r taskRow) toDomain() domain.Task {
 	}
 }
 
+// --- Status transitions ---
+// Each method is a single UPDATE by primary key. We also update runs.updated_at
+// opportunistically on run transitions so clients sorting by it see the
+// correct "most recent change" ordering.
+
+func (s *TaskStore) MarkRunRunning(ctx context.Context, runID uuid.UUID, at time.Time) error {
+	_, err := s.pool.Exec(ctx, `
+		UPDATE runs SET status = 'running', updated_at = $2
+		WHERE id = $1
+	`, runID, at)
+	if err != nil {
+		return fmt.Errorf("mark run running: %w", err)
+	}
+	return nil
+}
+
+func (s *TaskStore) MarkRunCompleted(ctx context.Context, runID uuid.UUID, at time.Time) error {
+	_, err := s.pool.Exec(ctx, `
+		UPDATE runs SET status = 'completed', updated_at = $2, completed_at = $2
+		WHERE id = $1
+	`, runID, at)
+	if err != nil {
+		return fmt.Errorf("mark run completed: %w", err)
+	}
+	return nil
+}
+
+func (s *TaskStore) MarkRunFailed(ctx context.Context, runID uuid.UUID, at time.Time) error {
+	_, err := s.pool.Exec(ctx, `
+		UPDATE runs SET status = 'failed', updated_at = $2, completed_at = $2
+		WHERE id = $1
+	`, runID, at)
+	if err != nil {
+		return fmt.Errorf("mark run failed: %w", err)
+	}
+	return nil
+}
+
+func (s *TaskStore) MarkTaskRunning(ctx context.Context, taskID uuid.UUID, at time.Time) error {
+	_, err := s.pool.Exec(ctx, `
+		UPDATE tasks SET status = 'running', started_at = $2, attempts = attempts + 1
+		WHERE id = $1
+	`, taskID, at)
+	if err != nil {
+		return fmt.Errorf("mark task running: %w", err)
+	}
+	return nil
+}
+
+func (s *TaskStore) MarkTaskCompleted(ctx context.Context, taskID uuid.UUID, result json.RawMessage, at time.Time) error {
+	if result == nil {
+		result = json.RawMessage(`{}`)
+	}
+	_, err := s.pool.Exec(ctx, `
+		UPDATE tasks SET status = 'completed', completed_at = $2, result = $3
+		WHERE id = $1
+	`, taskID, at, []byte(result))
+	if err != nil {
+		return fmt.Errorf("mark task completed: %w", err)
+	}
+	return nil
+}
+
+func (s *TaskStore) MarkTaskFailed(ctx context.Context, taskID uuid.UUID, errMsg string, at time.Time) error {
+	_, err := s.pool.Exec(ctx, `
+		UPDATE tasks SET status = 'failed', completed_at = $2, error = $3
+		WHERE id = $1
+	`, taskID, at, errMsg)
+	if err != nil {
+		return fmt.Errorf("mark task failed: %w", err)
+	}
+	return nil
+}
+
 func (s *TaskStore) ListTasks(ctx context.Context, runID uuid.UUID) ([]domain.Task, error) {
 	rows, err := s.pool.Query(ctx, `
 		SELECT id, run_id, kind, spec, depends_on, status,

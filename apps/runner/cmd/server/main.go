@@ -71,8 +71,8 @@ func main() {
 	// --- App layer: wire ports to use cases ---
 	taskStore := cockroach.NewTaskStore(pool)
 	eventBus := memeventbus.New()
-	stubEmitter := app.NewStubEmitter(eventBus)
-	runService := app.NewRunService(taskStore, stubEmitter)
+	executor := app.NewExecutor(taskStore, eventBus)
+	runService := app.NewRunService(taskStore, executor)
 
 	// --- HTTP server ---
 	mux := http.NewServeMux()

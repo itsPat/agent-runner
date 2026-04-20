@@ -74,3 +74,54 @@ func NewDAG(run Run, tasks []Task) (DAG, error) {
 
 	return DAG{Run: run, Tasks: tasks}, nil
 }
+
+// TopologicalOrder returns the tasks in an order that respects their
+// dependencies: a task appears only after all of its depends_on tasks.
+// Implemented with Kahn's algorithm — process zero-in-degree tasks in
+// waves, decrementing successors' in-degrees as we go.
+//
+// The DAG has already been validated acyclic by NewDAG, so the algorithm
+// is guaranteed to cover every task. If it ever doesn't, the invariant
+// has been broken and panicking is the right call.
+func (d DAG) TopologicalOrder() []Task {
+	n := len(d.Tasks)
+
+	// inDegree[task.ID] = number of unsatisfied dependencies.
+	inDegree := make(map[uuid.UUID]int, n)
+	// successors[task.ID] = tasks that depend on this task.
+	successors := make(map[uuid.UUID][]uuid.UUID, n)
+	byID := make(map[uuid.UUID]Task, n)
+	for _, t := range d.Tasks {
+		inDegree[t.ID] = len(t.DependsOn)
+		byID[t.ID] = t
+		for _, dep := range t.DependsOn {
+			successors[dep] = append(successors[dep], t.ID)
+		}
+	}
+
+	// Seed the queue with zero-in-degree tasks, preserving input order.
+	var queue []uuid.UUID
+	for _, t := range d.Tasks {
+		if inDegree[t.ID] == 0 {
+			queue = append(queue, t.ID)
+		}
+	}
+
+	ordered := make([]Task, 0, n)
+	for len(queue) > 0 {
+		id := queue[0]
+		queue = queue[1:]
+		ordered = append(ordered, byID[id])
+		for _, s := range successors[id] {
+			inDegree[s]--
+			if inDegree[s] == 0 {
+				queue = append(queue, s)
+			}
+		}
+	}
+
+	if len(ordered) != n {
+		panic("DAG invariant violated: topological order missed tasks")
+	}
+	return ordered
+}
