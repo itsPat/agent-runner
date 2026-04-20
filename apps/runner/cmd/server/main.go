@@ -13,6 +13,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/itsPat/agent-runner/apps/runner/internal/adapters/cockroach"
 	agentv1 "github.com/itsPat/agent-runner/gen/go/agent/v1"
 	"github.com/itsPat/agent-runner/gen/go/agent/v1/agentv1connect"
 )
@@ -24,7 +25,28 @@ func main() {
 
 	aiServiceAddr := getenv("AI_SERVICE_ADDR", "localhost:8081")
 	httpAddr := getenv("HTTP_ADDR", ":8080")
+	cockroachDSN := getenv("COCKROACH_DSN", "postgres://root@localhost:26257/defaultdb?sslmode=disable")
 	aiServiceBaseURL := normalizeBaseURL(aiServiceAddr)
+
+	// --- Database: open pool, run migrations ---
+	// Startup budget: pool open + ping + migrations must finish in 30s.
+	// CRDB in docker-compose can be slow to accept connections right after
+	// its healthcheck first reports healthy.
+	startupCtx, startupCancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer startupCancel()
+
+	pool, err := cockroach.NewPool(startupCtx, cockroachDSN)
+	if err != nil {
+		slog.Error("open cockroach pool", "err", err)
+		os.Exit(1)
+	}
+	defer pool.Close()
+
+	if err := cockroach.RunMigrations(startupCtx, pool); err != nil {
+		slog.Error("run migrations", "err", err)
+		os.Exit(1)
+	}
+	slog.Info("migrations applied", "dsn", cockroachDSN)
 
 	// The runner talks to the AI service over Connect on plain HTTP.
 	aiClient := agentv1connect.NewAgentServiceClient(
