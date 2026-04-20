@@ -15,6 +15,7 @@ import (
 
 	"github.com/itsPat/agent-runner/apps/runner/internal/adapters/cockroach"
 	"github.com/itsPat/agent-runner/apps/runner/internal/adapters/httpapi"
+	"github.com/itsPat/agent-runner/apps/runner/internal/adapters/memeventbus"
 	"github.com/itsPat/agent-runner/apps/runner/internal/app"
 	agentv1 "github.com/itsPat/agent-runner/gen/go/agent/v1"
 	"github.com/itsPat/agent-runner/gen/go/agent/v1/agentv1connect"
@@ -69,13 +70,17 @@ func main() {
 
 	// --- App layer: wire ports to use cases ---
 	taskStore := cockroach.NewTaskStore(pool)
-	runService := app.NewRunService(taskStore)
+	eventBus := memeventbus.New()
+	stubEmitter := app.NewStubEmitter(eventBus)
+	runService := app.NewRunService(taskStore, stubEmitter)
 
 	// --- HTTP server ---
 	mux := http.NewServeMux()
 
 	// Public API (POST /runs, GET /runs/:id) from the httpapi adapter.
 	httpapi.NewRouter(runService).Register(mux)
+	// SSE: GET /runs/:id/events
+	httpapi.NewSSEHandler(eventBus).Register(mux)
 
 	mux.HandleFunc("GET /health", func(w http.ResponseWriter, r *http.Request) {
 		// Check we can still reach the AI service.

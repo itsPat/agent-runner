@@ -15,13 +15,22 @@ import (
 	"github.com/itsPat/agent-runner/apps/runner/internal/ports"
 )
 
-// RunService is the orchestration layer for run-related use cases.
-type RunService struct {
-	store ports.TaskStore
+// Executor is the minimal interface RunService needs to kick off run
+// execution after persistence. It is deliberately small: Phase 1.3b uses
+// a stub emitter; Phase 1.4 will swap in a real DAG executor without
+// changing this surface.
+type Executor interface {
+	Emit(run domain.Run, tasks []domain.Task)
 }
 
-func NewRunService(store ports.TaskStore) *RunService {
-	return &RunService{store: store}
+// RunService is the orchestration layer for run-related use cases.
+type RunService struct {
+	store    ports.TaskStore
+	executor Executor
+}
+
+func NewRunService(store ports.TaskStore, executor Executor) *RunService {
+	return &RunService{store: store, executor: executor}
 }
 
 // SubmitGoal persists a new Run with a hardcoded 2-task DAG. In Phase 2 the
@@ -42,6 +51,9 @@ func (s *RunService) SubmitGoal(ctx context.Context, goal string) (domain.Run, e
 	if err := s.store.CreateRun(ctx, dag); err != nil {
 		return domain.Run{}, fmt.Errorf("persist run: %w", err)
 	}
+
+	// Kick off background execution. Emit returns immediately.
+	s.executor.Emit(dag.Run, dag.Tasks)
 	return run, nil
 }
 
